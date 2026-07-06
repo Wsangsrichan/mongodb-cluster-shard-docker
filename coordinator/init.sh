@@ -60,11 +60,13 @@ init_repset() {
     local members=("$@")
     local primary="${members[0]}"
     local member_objects=""
+    local i=0
 
     for member in "${members[@]}"; do
         local host="${member%%:*}"
         local port="${member##*:}"
-        member_objects+="{\"_id\":${#member_objects#*{}}, host:\"$host:$port\"},"
+        member_objects+="{\"_id\":$i, host:\"$host:$port\"},"
+        i=$((i + 1))
     done
 
     log "Initiating replica set '$rep_set'..."
