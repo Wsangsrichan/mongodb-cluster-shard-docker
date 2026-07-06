@@ -1,0 +1,563 @@
+services:
+
+  ######## MONGODB SHARD0 ########
+
+  shard0-replica0:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard0
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard0-replica0-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - shard0-replica0
+    environment:
+      - REPSET_NAME=shard0
+      - DO_INIT_REPSET=true
+      - MONGO_SERVICE_NAME=shard0-replica0
+    expose:
+      - "27017"
+
+  shard0-replica1:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard0
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard0-replica1-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - shard0-replica1
+    environment:
+      - REPSET_NAME=shard0
+      - MONGO_SERVICE_NAME=shard0-replica1
+    expose:
+      - "27017"
+
+  shard0-replica2:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard0
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard0-replica2-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - shard0-replica2
+    environment:
+      - REPSET_NAME=shard0
+      - MONGO_SERVICE_NAME=shard0-replica2
+    expose:
+      - "27017"
+
+  ######## MONGODB SHARD1 ########
+
+  shard1-replica0:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard1
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard1-replica0-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - shard1-replica0
+    environment:
+      - REPSET_NAME=shard1
+      - DO_INIT_REPSET=true
+      - MONGO_SERVICE_NAME=shard1-replica0
+    expose:
+      - "27017"
+
+  shard1-replica1:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard1
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard1-replica1-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - shard1-replica1
+    environment:
+      - REPSET_NAME=shard1
+      - MONGO_SERVICE_NAME=shard1-replica1
+    expose:
+      - "27017"
+
+  shard1-replica2:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard1
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard1-replica2-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - shard1-replica2
+    environment:
+      - REPSET_NAME=shard1
+      - MONGO_SERVICE_NAME=shard1-replica2
+    expose:
+      - "27017"
+
+  ######## MONGODB CONFIGDB ########
+
+  configdb-replica0:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --configsvr --replSet configdb
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - configdb-replica0-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - configdb-replica0
+    environment:
+      - REPSET_NAME=configdb
+      - DO_INIT_REPSET=true
+      - MONGO_SERVICE_NAME=configdb-replica0
+    expose:
+      - "27017"
+
+  configdb-replica1:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --configsvr --replSet configdb
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - configdb-replica1-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - configdb-replica1
+    environment:
+      - REPSET_NAME=configdb
+      - MONGO_SERVICE_NAME=configdb-replica1
+    expose:
+      - "27017"
+
+  configdb-replica2:
+    build:
+      context: mongod
+    command: mongod -f /etc/mongod.conf --configsvr --replSet configdb
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - configdb-replica2-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - configdb-replica2
+    environment:
+      - REPSET_NAME=configdb
+      - MONGO_SERVICE_NAME=configdb-replica2
+    expose:
+      - "27017"
+
+  ######## MONGODB MONGOS ROUTERS ########
+
+  mongos-router0:
+    build:
+      context: mongos
+    command: mongos --port 27017 --bind_ip 0.0.0.0 --configdb "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
+    volumes:
+      - init-state:/init-state
+      - ./mongos/mongos.conf:/etc/mongos.conf:ro
+    env_file:
+      - .env
+    restart: always
+    depends_on:
+      - shard0-replica0
+      - shard0-replica1
+      - shard0-replica2
+      - shard1-replica0
+      - shard1-replica1
+      - shard1-replica2
+      - configdb-replica0
+      - configdb-replica1
+      - configdb-replica2
+    networks:
+      internalnetwork:
+        aliases:
+          - mongos-router0
+    environment:
+      - SHARD_LIST=shard0/shard0-replica0:27017,shard0-replica1:27017,shard0-replica2:27017;shard1/shard1-replica0:27017,shard1-replica1:27017,shard1-replica2:27017
+    expose:
+      - "27017"
+    ports:
+      - "27017:27017"  # Map the host workstation's port 27017 to the docker instance exposed port 27017 for 'direct' mongos access
+
+  mongos-router1:
+    build:
+      context: mongos
+    command: mongos --port 27017 --bind_ip 0.0.0.0 --configdb "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
+    volumes:
+      - init-state:/init-state
+      - ./mongos/mongos.conf:/etc/mongos.conf:ro
+    env_file:
+      - .env
+    restart: always
+    depends_on:
+      - shard0-replica0
+      - shard0-replica1
+      - shard0-replica2
+      - shard1-replica0
+      - shard1-replica1
+      - shard1-replica2
+      - configdb-replica0
+      - configdb-replica1
+      - configdb-replica2
+    networks:
+      internalnetwork:
+        aliases:
+          - mongos-router1
+    environment:
+      - SHARD_LIST=shard0/shard0-replica0:27017,shard0-replica1:27017,shard0-replica2:27017;shard1/shard1-replica0:27017,shard1-replica1:27017,shard1-replica2:27017
+    expose:
+      - "27017"
+    ports:
+      - "27018:27017"  # Map the host workstation's port 27018 to the docker instance exposed port 27017 for 'direct' mongos access
+
+  ######## AUTHENTICATION COORDINATOR ########
+
+  coordinator:
+    build:
+      context: .
+      dockerfile: coordinator/Dockerfile
+    volumes:
+      - init-state:/init-state
+    env_file:
+      - .env
+    environment:
+      - INIT_TIMEOUT=300
+    networks:
+      internalnetwork:
+        aliases:
+          - coordinator
+    depends_on:
+      - shard0-replica0
+      - shard0-replica1
+      - shard0-replica2
+      - shard1-replica0
+      - shard1-replica1
+      - shard1-replica2
+      - configdb-replica0
+      - configdb-replica1
+      - configdb-replica2
+    restart: "no"
+
+  x-mongo-exporter-base: &mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    command:
+ #     - "--compatible-mode"
+ #     - "--collector.replicasetstatus"
+ #     - "--collector.dbstats"
+ #     - "--collector.collstats"
+ #     - "--collector.indexstats"
+ #     - "--collector.topmetrics"
+ #     - "--collector.currentopmetrics"
+ #     - "--collector.shards"
+ #     - "--mongodb.global-conn-pool"
+ #     - "--web.listen-address=:9216"
+
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+
+#      - "--collect-all"
+#      - "--compatible-mode"
+#      - "--discovering-mode"
+#      - "--mongodb.global-conn-pool"
+#      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
+
+  mongo-exporter-shard0-replica0:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-shard0-replica0
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard0-replica0:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - shard0-replica0
+
+  mongo-exporter-shard0-replica1:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-shard0-replica1
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard0-replica1:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - shard0-replica1
+
+  mongo-exporter-shard0-replica2:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-shard0-replica2
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard0-replica2:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - shard0-replica2
+
+  mongo-exporter-shard1-replica0:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-shard1-replica0
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard1-replica0:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - shard1-replica0
+
+  mongo-exporter-shard1-replica1:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-shard1-replica1
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard1-replica1:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - shard1-replica1
+
+  mongo-exporter-shard1-replica2:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-shard1-replica2
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard1-replica2:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - shard1-replica2
+
+  mongo-exporter-configdb-replica0:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-configdb-replica0
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@configdb-replica0:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - configdb-replica0
+
+  mongo-exporter-configdb-replica1:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-configdb-replica1
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@configdb-replica1:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - configdb-replica1
+
+  mongo-exporter-configdb-replica2:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-configdb-replica2
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@configdb-replica2:27017/admin?authSource=admin&directConnection=true"
+    depends_on:
+      - configdb-replica2
+
+  mongo-exporter-mongos-router0:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-mongos-router0
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--collector.diagnosticdata"
+      - "--collector.shards"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@mongos-router0:27017/admin?authSource=admin"
+    depends_on:
+      - mongos-router0
+
+  mongo-exporter-mongos-router1:
+    <<: *mongo-exporter-base
+    container_name: mongo-exporter-mongos-router1
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--collector.diagnosticdata"
+      - "--collector.shards"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@mongos-router1:27017/admin?authSource=admin"
+    depends_on:
+      - mongos-router1
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    expose:
+      - "9100"
+    restart: always
+    networks:
+      internalnetwork:
+        aliases:
+          - node-exporter
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    ports:
+      - 9090:9090
+    networks:
+      internalnetwork:
+        aliases:
+          - prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      internalnetwork:
+        aliases:
+          - grafana
+
+  ######## AUTOMATED BACKUP SERVICE ########
+
+  backup:
+    image: mongo:latest
+    container_name: mongodb-backup
+    volumes:
+      - mongobackups:/tmp/backups
+      - ./backups:/host-backups
+      - ./backup/entrypoint.sh:/entrypoint.sh:ro
+    networks:
+      internalnetwork:
+        aliases:
+          - mongodb-backup
+    env_file:
+      - .env
+    environment:
+      - MONGO_HOST=mongos-router0
+      - MONGO_PORT=27017
+      - BACKUP_RETENTION_DAYS=7
+      - BACKUP_TIME=01:00
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    restart: always
+
+
+networks:
+  internalnetwork: {}
+volumes:
+  init-state:
+  grafana_data:
+  shard0-replica0-data:
+  shard0-replica1-data:
+  shard0-replica2-data:
+  shard1-replica0-data:
+  shard1-replica1-data:
+  shard1-replica2-data:
+  configdb-replica0-data:
+  configdb-replica1-data:
+  configdb-replica2-data:
+  mongobackups: {}

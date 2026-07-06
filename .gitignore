@@ -1,0 +1,30 @@
+# Environment file with secrets
+.env
+
+# MongoDB data directories (Docker volumes)
+shard0-replica0-data/
+shard0-replica1-data/
+shard0-replica2-data/
+shard1-replica0-data/
+shard1-replica1-data/
+shard1-replica2-data/
+configdb-replica0-data/
+configdb-replica1-data/
+configdb-replica2-data/
+
+# Backup files
+backups/
+mongobackups/
+
+# Grafana data
+grafana_data/
+
+# Init state marker
+init-state/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

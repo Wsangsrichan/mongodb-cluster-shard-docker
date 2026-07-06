@@ -1,0 +1,118 @@
+# =============================================================================
+# Prometheus Configuration - MongoDB Sharded Cluster Monitoring
+# =============================================================================
+# Scrapes MongoDB exporters (percona/mongodb_exporter) for each shard replica,
+# config server replica, and mongos router, plus node-exporter for host metrics.
+#
+# Job: mongodb  - All MongoDB exporter targets with cluster/component labels
+# Job: node     - Host-level metrics from node-exporter
+# Job: prometheus - Self-monitoring for Prometheus itself
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "mongodb"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - mongo-exporter-shard0-replica0:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard0"
+          mongo_node: "shard0-replica0"
+
+      - targets:
+          - mongo-exporter-shard0-replica1:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard0"
+          mongo_node: "shard0-replica1"
+
+      - targets:
+          - mongo-exporter-shard0-replica2:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard0"
+          mongo_node: "shard0-replica2"
+
+      - targets:
+          - mongo-exporter-shard1-replica0:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard1"
+          mongo_node: "shard1-replica0"
+
+      - targets:
+          - mongo-exporter-shard1-replica1:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard1"
+          mongo_node: "shard1-replica1"
+
+      - targets:
+          - mongo-exporter-shard1-replica2:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard1"
+          mongo_node: "shard1-replica2"
+
+      - targets:
+          - mongo-exporter-configdb-replica0:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "configdb"
+          replica_set: "configdb"
+          mongo_node: "configdb-replica0"
+
+      - targets:
+          - mongo-exporter-configdb-replica1:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "configdb"
+          replica_set: "configdb"
+          mongo_node: "configdb-replica1"
+
+      - targets:
+          - mongo-exporter-configdb-replica2:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "configdb"
+          replica_set: "configdb"
+          mongo_node: "configdb-replica2"
+
+      - targets:
+          - mongo-exporter-mongos-router0:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "mongos"
+          replica_set: "mongos"
+          mongo_node: "mongos-router0"
+
+      - targets:
+          - mongo-exporter-mongos-router1:9216
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "mongos"
+          replica_set: "mongos"
+          mongo_node: "mongos-router1"
+
+  - job_name: "node"
+    static_configs:
+      - targets:
+          - node-exporter:9100
+        labels:
+          cluster: "mongo-sharded-cluster"
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets:
+          - prometheus:9090
