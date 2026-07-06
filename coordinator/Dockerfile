@@ -1,4 +1,4 @@
-FROM mongo:7.0
+FROM mongo:latest
 
 COPY coordinator/init.sh /init.sh
 
