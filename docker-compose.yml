@@ -1,24 +1,3 @@
-x-mongo-exporter-base: &mongo-exporter-base
-  image: percona/mongodb_exporter:0.41.0
-  restart: always
-  command:
-    - "--compatible-mode"
-    - "--collector.replicasetstatus"
-    - "--collector.dbstats"
-    - "--collector.dbstatsfreestorage"
-    - "--collector.collstats"
-    - "--collector.indexstats"
-    - "--collector.topmetrics"
-    - "--collector.currentopmetrics"
-    - "--mongodb.global-conn-pool"
-    - "--web.listen-address=:9216"
-  env_file:
-    - .env
-  expose:
-    - "9216"
-  networks:
-    - internalnetwork
-
 services:
 
   ######## MONGODB SHARD0 ########
@@ -225,10 +204,10 @@ services:
     build:
       context: mongos
     command:
-      - "--port"
-      - "27017"
-      - "--bind_ip"
-      - "0.0.0.0"
+      - "-f"
+      - "/etc/mongos.conf"
+      - "--keyFile"
+      - "/init-state/keyfile"
       - "--configdb"
       - "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
     volumes:
@@ -262,10 +241,10 @@ services:
     build:
       context: mongos
     command:
-      - "--port"
-      - "27017"
-      - "--bind_ip"
-      - "0.0.0.0"
+      - "-f"
+      - "/etc/mongos.conf"
+      - "--keyFile"
+      - "/init-state/keyfile"
       - "--configdb"
       - "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
     volumes:
@@ -324,7 +303,25 @@ services:
     restart: "no"
 
   mongo-exporter-shard0-replica0:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-shard0-replica0
     environment:
       MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard0-replica0:27017/admin?authSource=admin&directConnection=true"
@@ -332,7 +329,25 @@ services:
       - shard0-replica0
 
   mongo-exporter-shard0-replica1:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-shard0-replica1
     environment:
       MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard0-replica1:27017/admin?authSource=admin&directConnection=true"
@@ -340,7 +355,25 @@ services:
       - shard0-replica1
 
   mongo-exporter-shard0-replica2:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-shard0-replica2
     environment:
       MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard0-replica2:27017/admin?authSource=admin&directConnection=true"
@@ -348,7 +381,25 @@ services:
       - shard0-replica2
 
   mongo-exporter-shard1-replica0:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-shard1-replica0
     environment:
       MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard1-replica0:27017/admin?authSource=admin&directConnection=true"
@@ -356,7 +407,25 @@ services:
       - shard1-replica0
 
   mongo-exporter-shard1-replica1:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-shard1-replica1
     environment:
       MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard1-replica1:27017/admin?authSource=admin&directConnection=true"
@@ -364,7 +433,25 @@ services:
       - shard1-replica1
 
   mongo-exporter-shard1-replica2:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-shard1-replica2
     environment:
       MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard1-replica2:27017/admin?authSource=admin&directConnection=true"
@@ -372,7 +459,14 @@ services:
       - shard1-replica2
 
   mongo-exporter-configdb-replica0:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-configdb-replica0
     command:
       - "--compatible-mode"
@@ -391,7 +485,14 @@ services:
       - configdb-replica0
 
   mongo-exporter-configdb-replica1:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-configdb-replica1
     command:
       - "--compatible-mode"
@@ -410,7 +511,14 @@ services:
       - configdb-replica1
 
   mongo-exporter-configdb-replica2:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-configdb-replica2
     command:
       - "--compatible-mode"
@@ -429,7 +537,14 @@ services:
       - configdb-replica2
 
   mongo-exporter-mongos-router0:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-mongos-router0
     command:
       - "--compatible-mode"
@@ -450,7 +565,14 @@ services:
       - mongos-router0
 
   mongo-exporter-mongos-router1:
-    <<: *mongo-exporter-base
+    image: percona/mongodb_exporter:0.41.0
+    restart: always
+    env_file:
+      - .env
+    expose:
+      - "9216"
+    networks:
+      - internalnetwork
     container_name: mongo-exporter-mongos-router1
     command:
       - "--compatible-mode"
