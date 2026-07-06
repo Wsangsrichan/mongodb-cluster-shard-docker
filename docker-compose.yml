@@ -225,7 +225,6 @@ services:
     build:
       context: mongos
     command:
-      - "mongos"
       - "--port"
       - "27017"
       - "--bind_ip"
@@ -257,13 +256,12 @@ services:
     expose:
       - "27017"
     ports:
-      - "27017:27017"  # Map the host workstation's port 27017 to the docker instance exposed port 27017 for 'direct' mongos access
+      - "27017:27017"
 
   mongos-router1:
     build:
       context: mongos
     command:
-      - "mongos"
       - "--port"
       - "27017"
       - "--bind_ip"
