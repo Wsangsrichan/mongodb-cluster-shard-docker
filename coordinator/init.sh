@@ -177,6 +177,14 @@ log "MongoDB Sharded Cluster Initialization"
 log "========================================="
 
 # ----------------------------------------------------------------------
+# Step 0: Generate internal auth keyfile (must be done FIRST)
+# ----------------------------------------------------------------------
+log "Step 0: Generating internal auth keyfile..."
+openssl rand -base64 756 > /init-state/keyfile
+chmod 400 /init-state/keyfile
+log "Keyfile generated at /init-state/keyfile"
+
+# ----------------------------------------------------------------------
 # Step 1: Wait for all mongod nodes
 # ----------------------------------------------------------------------
 log "Step 1: Waiting for configdb nodes..."

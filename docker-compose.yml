@@ -1,3 +1,24 @@
+x-mongo-exporter-base: &mongo-exporter-base
+  image: percona/mongodb_exporter:0.41.0
+  restart: always
+  command:
+    - "--compatible-mode"
+    - "--collector.replicasetstatus"
+    - "--collector.dbstats"
+    - "--collector.dbstatsfreestorage"
+    - "--collector.collstats"
+    - "--collector.indexstats"
+    - "--collector.topmetrics"
+    - "--collector.currentopmetrics"
+    - "--mongodb.global-conn-pool"
+    - "--web.listen-address=:9216"
+  env_file:
+    - .env
+  expose:
+    - "9216"
+  networks:
+    - internalnetwork
+
 services:
 
   ######## MONGODB SHARD0 ########
@@ -5,7 +26,7 @@ services:
   shard0-replica0:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard0
+    command: --shardsvr --replSet shard0
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -27,7 +48,7 @@ services:
   shard0-replica1:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard0
+    command: --shardsvr --replSet shard0
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -48,7 +69,7 @@ services:
   shard0-replica2:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard0
+    command: --shardsvr --replSet shard0
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -71,7 +92,7 @@ services:
   shard1-replica0:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard1
+    command: --shardsvr --replSet shard1
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -93,7 +114,7 @@ services:
   shard1-replica1:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard1
+    command: --shardsvr --replSet shard1
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -114,7 +135,7 @@ services:
   shard1-replica2:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --shardsvr --replSet shard1
+    command: --shardsvr --replSet shard1
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -137,7 +158,7 @@ services:
   configdb-replica0:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --configsvr --replSet configdb
+    command: --configsvr --replSet configdb
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -159,7 +180,7 @@ services:
   configdb-replica1:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --configsvr --replSet configdb
+    command: --configsvr --replSet configdb
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -180,7 +201,7 @@ services:
   configdb-replica2:
     build:
       context: mongod
-    command: mongod -f /etc/mongod.conf --configsvr --replSet configdb
+    command: --configsvr --replSet configdb
     volumes:
       - ./mongod/mongod.conf:/etc/mongod.conf
       - init-state:/init-state
@@ -203,7 +224,14 @@ services:
   mongos-router0:
     build:
       context: mongos
-    command: mongos --port 27017 --bind_ip 0.0.0.0 --configdb "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
+    command:
+      - "mongos"
+      - "--port"
+      - "27017"
+      - "--bind_ip"
+      - "0.0.0.0"
+      - "--configdb"
+      - "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
     volumes:
       - init-state:/init-state
       - ./mongos/mongos.conf:/etc/mongos.conf:ro
@@ -234,7 +262,14 @@ services:
   mongos-router1:
     build:
       context: mongos
-    command: mongos --port 27017 --bind_ip 0.0.0.0 --configdb "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
+    command:
+      - "mongos"
+      - "--port"
+      - "27017"
+      - "--bind_ip"
+      - "0.0.0.0"
+      - "--configdb"
+      - "configdb/configdb-replica0:27017,configdb-replica1:27017,configdb-replica2:27017"
     volumes:
       - init-state:/init-state
       - ./mongos/mongos.conf:/etc/mongos.conf:ro
@@ -289,44 +324,6 @@ services:
       - configdb-replica1
       - configdb-replica2
     restart: "no"
-
-  x-mongo-exporter-base: &mongo-exporter-base
-    image: percona/mongodb_exporter:0.41.0
-    restart: always
-    command:
- #     - "--compatible-mode"
- #     - "--collector.replicasetstatus"
- #     - "--collector.dbstats"
- #     - "--collector.collstats"
- #     - "--collector.indexstats"
- #     - "--collector.topmetrics"
- #     - "--collector.currentopmetrics"
- #     - "--collector.shards"
- #     - "--mongodb.global-conn-pool"
- #     - "--web.listen-address=:9216"
-
-      - "--compatible-mode"
-      - "--collector.replicasetstatus"
-      - "--collector.dbstats"
-      - "--collector.dbstatsfreestorage"
-      - "--collector.collstats"
-      - "--collector.indexstats"
-      - "--collector.topmetrics"
-      - "--collector.currentopmetrics"
-      - "--mongodb.global-conn-pool"
-      - "--web.listen-address=:9216"
-
-#      - "--collect-all"
-#      - "--compatible-mode"
-#      - "--discovering-mode"
-#      - "--mongodb.global-conn-pool"
-#      - "--web.listen-address=:9216"
-    env_file:
-      - .env
-    expose:
-      - "9216"
-    networks:
-      - internalnetwork
 
   mongo-exporter-shard0-replica0:
     <<: *mongo-exporter-base

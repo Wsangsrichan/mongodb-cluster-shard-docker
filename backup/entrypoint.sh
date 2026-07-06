@@ -2,8 +2,8 @@
 # ----------------------------------------------------------------------
 # MongoDB Backup Service Entrypoint
 #
-# Sets up a cron job to run mongodump daily at BACKUP_TIME,
-# cleans up old backups, and copies to host-backups directory.
+# Runs mongodump daily at BACKUP_TIME using a while+sleep loop
+# (no cron required, avoids the "cron: not found" issue).
 # ----------------------------------------------------------------------
 
 set -e
@@ -22,61 +22,47 @@ MONGODUMP_URI="mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSW
 mkdir -p "$BACKUP_DIR"
 mkdir -p "$HOST_BACKUP_DIR" 2>/dev/null || true
 
-# Create the backup script
-cat > /usr/local/bin/backup.sh << 'SCRIPTEOF'
-#!/bin/bash
-set -e
+echo "[$(date)] Backup service started. Will run daily at ${BACKUP_TIME}"
 
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_PATH="/tmp/backups/backup_${TIMESTAMP}"
-HOST_BACKUP_PATH="/host-backups/backup_${TIMESTAMP}"
+# Track the last date we ran to avoid duplicate runs
+LAST_RUN_DATE=""
 
-echo "[$(date)] Starting mongodump backup..."
+while true; do
+  current_time=$(date +%H:%M)
+  current_date=$(date +%Y-%m-%d)
 
-mongodump \
-    --uri="${MONGODUMP_URI}" \
-    --out="${BACKUP_PATH}" \
-    --gzip \
-    2>&1
+  if [ "$current_time" = "$BACKUP_TIME" ] && [ "$current_date" != "$LAST_RUN_DATE" ]; then
+    echo "[$(date)] =========================================="
+    echo "[$(date)] Starting scheduled backup..."
 
-if [ $? -eq 0 ]; then
-    echo "[$(date)] Backup completed successfully to ${BACKUP_PATH}"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_PATH="${BACKUP_DIR}/backup_${TIMESTAMP}"
 
-    # Copy to host mount
-    if [ -d "/host-backups" ]; then
+    if mongodump \
+        --uri="${MONGODUMP_URI}" \
+        --out="${BACKUP_PATH}" \
+        --gzip \
+        2>&1; then
+      echo "[$(date)] Backup completed successfully to ${BACKUP_PATH}"
+
+      # Copy to host mount
+      if [ -d "/host-backups" ]; then
         cp -r "${BACKUP_PATH}" "/host-backups/" 2>/dev/null || true
         echo "[$(date)] Backup copied to host: /host-backups/backup_${TIMESTAMP}"
+      fi
+    else
+      echo "[$(date)] Backup FAILED!"
     fi
-else
-    echo "[$(date)] Backup FAILED!"
-    exit 1
-fi
 
-# Cleanup old backups
-echo "[$(date)] Cleaning up backups older than ${BACKUP_RETENTION_DAYS} days..."
-find /tmp/backups -maxdepth 1 -type d -name "backup_*" -mtime "+${BACKUP_RETENTION_DAYS}" -exec rm -rf {} \; 2>/dev/null || true
-find /host-backups -maxdepth 1 -type d -name "backup_*" -mtime "+${BACKUP_RETENTION_DAYS}" -exec rm -rf {} \; 2>/dev/null || true
+    # Cleanup old backups
+    echo "[$(date)] Cleaning up backups older than ${BACKUP_RETENTION_DAYS} days..."
+    find "$BACKUP_DIR" -maxdepth 1 -type d -name "backup_*" -mtime "+${BACKUP_RETENTION_DAYS}" -exec rm -rf {} \; 2>/dev/null || true
+    find "$HOST_BACKUP_DIR" -maxdepth 1 -type d -name "backup_*" -mtime "+${BACKUP_RETENTION_DAYS}" -exec rm -rf {} \; 2>/dev/null || true
 
-echo "[$(date)] Backup maintenance completed"
-SCRIPTEOF
+    LAST_RUN_DATE="$current_date"
+    echo "[$(date)] Backup maintenance completed"
+    echo "[$(date)] =========================================="
+  fi
 
-chmod +x /usr/local/bin/backup.sh
-
-# Export variables for cron
-export MONGODUMP_URI BACKUP_RETENTION_DAYS
-
-# Set up cron job
-HOUR=$(echo "$BACKUP_TIME" | cut -d: -f1)
-MINUTE=$(echo "$BACKUP_TIME" | cut -d: -f2)
-
-echo "${MINUTE} ${HOUR} * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1" > /etc/cron.d/mongodb-backup
-chmod 0644 /etc/cron.d/mongodb-backup
-
-# Also write env vars for cron
-printenv | grep -E "^(MONGODUMP_URI|BACKUP_RETENTION_DAYS|PATH)" > /etc/environment
-
-echo "[$(date)] Backup cron job scheduled daily at ${BACKUP_TIME}"
-echo "[$(date)] Starting cron daemon..."
-
-# Run cron in foreground
-exec cron -f
+  sleep 30
+done
