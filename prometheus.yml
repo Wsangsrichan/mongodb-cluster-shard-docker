@@ -1,12 +1,8 @@
 # =============================================================================
-# Prometheus Configuration - MongoDB Sharded Cluster Monitoring
+# Prometheus Configuration — MongoDB Sharded Cluster (Multi-Host)
 # =============================================================================
-# Scrapes MongoDB exporters (percona/mongodb_exporter) for each shard replica,
-# config server replica, and mongos router, plus node-exporter for host metrics.
-#
-# Job: mongodb  - All MongoDB exporter targets with cluster/component labels
-# Job: node     - Host-level metrics from node-exporter
-# Job: prometheus - Self-monitoring for Prometheus itself
+# Runs on Host 1. Scrapes all 9 MongoDB exporters across all 3 hosts.
+# Exporters per host: port 9216 (configdb), 9217 (shard0), 9218 (shard1)
 # =============================================================================
 
 global:
@@ -17,102 +13,109 @@ scrape_configs:
   - job_name: "mongodb"
     metrics_path: /metrics
     static_configs:
+      # Host 1 exporters (localhost)
       - targets:
-          - mongo-exporter-shard0-replica0:9216
-        labels:
-          cluster: "mongo-sharded-cluster"
-          component: "shard"
-          replica_set: "shard0"
-          mongo_node: "shard0-replica0"
-
-      - targets:
-          - mongo-exporter-shard0-replica1:9216
-        labels:
-          cluster: "mongo-sharded-cluster"
-          component: "shard"
-          replica_set: "shard0"
-          mongo_node: "shard0-replica1"
-
-      - targets:
-          - mongo-exporter-shard0-replica2:9216
-        labels:
-          cluster: "mongo-sharded-cluster"
-          component: "shard"
-          replica_set: "shard0"
-          mongo_node: "shard0-replica2"
-
-      - targets:
-          - mongo-exporter-shard1-replica0:9216
-        labels:
-          cluster: "mongo-sharded-cluster"
-          component: "shard"
-          replica_set: "shard1"
-          mongo_node: "shard1-replica0"
-
-      - targets:
-          - mongo-exporter-shard1-replica1:9216
-        labels:
-          cluster: "mongo-sharded-cluster"
-          component: "shard"
-          replica_set: "shard1"
-          mongo_node: "shard1-replica1"
-
-      - targets:
-          - mongo-exporter-shard1-replica2:9216
-        labels:
-          cluster: "mongo-sharded-cluster"
-          component: "shard"
-          replica_set: "shard1"
-          mongo_node: "shard1-replica2"
-
-      - targets:
-          - mongo-exporter-configdb-replica0:9216
+          - localhost:9216
         labels:
           cluster: "mongo-sharded-cluster"
           component: "configdb"
           replica_set: "configdb"
           mongo_node: "configdb-replica0"
+          host: "host1"
 
       - targets:
-          - mongo-exporter-configdb-replica1:9216
+          - localhost:9217
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard0"
+          mongo_node: "shard0-replica0"
+          host: "host1"
+
+      - targets:
+          - localhost:9218
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard1"
+          mongo_node: "shard1-replica1"
+          host: "host1"
+
+      # Host 2 exporters
+      - targets:
+          - ${HOST2_IP}:9216
         labels:
           cluster: "mongo-sharded-cluster"
           component: "configdb"
           replica_set: "configdb"
           mongo_node: "configdb-replica1"
+          host: "host2"
 
       - targets:
-          - mongo-exporter-configdb-replica2:9216
+          - ${HOST2_IP}:9217
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard0"
+          mongo_node: "shard0-replica1"
+          host: "host2"
+
+      - targets:
+          - ${HOST2_IP}:9218
+        labels:
+          cluster: "mongo-sharded-cluster"
+          component: "shard"
+          replica_set: "shard1"
+          mongo_node: "shard1-replica0"
+          host: "host2"
+
+      # Host 3 exporters
+      - targets:
+          - ${HOST3_IP}:9216
         labels:
           cluster: "mongo-sharded-cluster"
           component: "configdb"
           replica_set: "configdb"
           mongo_node: "configdb-replica2"
+          host: "host3"
 
       - targets:
-          - mongo-exporter-mongos-router0:9216
+          - ${HOST3_IP}:9217
         labels:
           cluster: "mongo-sharded-cluster"
-          component: "mongos"
-          replica_set: "mongos"
-          mongo_node: "mongos-router0"
+          component: "shard"
+          replica_set: "shard0"
+          mongo_node: "shard0-replica2"
+          host: "host3"
 
       - targets:
-          - mongo-exporter-mongos-router1:9216
+          - ${HOST3_IP}:9218
         labels:
           cluster: "mongo-sharded-cluster"
-          component: "mongos"
-          replica_set: "mongos"
-          mongo_node: "mongos-router1"
+          component: "shard"
+          replica_set: "shard1"
+          mongo_node: "shard1-replica2"
+          host: "host3"
 
   - job_name: "node"
     static_configs:
       - targets:
-          - node-exporter:9100
+          - localhost:9100
         labels:
           cluster: "mongo-sharded-cluster"
+          host: "host1"
+      - targets:
+          - ${HOST2_IP}:9100
+        labels:
+          cluster: "mongo-sharded-cluster"
+          host: "host2"
+      - targets:
+          - ${HOST3_IP}:9100
+        labels:
+          cluster: "mongo-sharded-cluster"
+          host: "host3"
 
   - job_name: "prometheus"
     static_configs:
       - targets:
-          - prometheus:9090
+          - localhost:9090

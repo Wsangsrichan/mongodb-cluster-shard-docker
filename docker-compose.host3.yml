@@ -1,0 +1,193 @@
+# =============================================================================
+# docker-compose.host3.yml — Host 3 (10.0.0.3)
+# =============================================================================
+# Runs: configdb-replica2, shard0-replica2, shard1-replica2,
+#       3 MongoDB exporters, HAProxy, Grafana, node-exporter
+#
+# All mongod nodes use internal port 27017 (no conflicts on separate hosts).
+# Exporters: host ports 9216 (configdb), 9217 (shard0), 9218 (shard1)
+# =============================================================================
+
+services:
+
+  ######## MONGODB CONFIG SERVER ########
+
+  configdb-replica2:
+    build:
+      context: mongod
+    command: --configsvr --replSet configdb
+    container_name: configdb-replica2
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - configdb-replica2-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    environment:
+      - REPSET_NAME=configdb
+      - MONGO_SERVICE_NAME=configdb-replica2
+
+  ######## MONGODB SHARD0 ########
+
+  shard0-replica2:
+    build:
+      context: mongod
+    command: --shardsvr --replSet shard0
+    container_name: shard0-replica2
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard0-replica2-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    environment:
+      - REPSET_NAME=shard0
+      - MONGO_SERVICE_NAME=shard0-replica2
+
+  ######## MONGODB SHARD1 ########
+
+  shard1-replica2:
+    build:
+      context: mongod
+    command: --shardsvr --replSet shard1
+    container_name: shard1-replica2
+    volumes:
+      - ./mongod/mongod.conf:/etc/mongod.conf
+      - init-state:/init-state
+      - shard1-replica2-data:/data/db
+    env_file:
+      - .env
+    restart: always
+    environment:
+      - REPSET_NAME=shard1
+      - MONGO_SERVICE_NAME=shard1-replica2
+
+  ######## MONGODB EXPORTERS (one per mongod on this host) ########
+
+  mongo-exporter-configdb:
+    image: percona/mongodb_exporter:0.41.0
+    container_name: mongo-exporter-configdb
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@configdb-replica2:27017/admin?authSource=admin&directConnection=true"
+    ports:
+      - "9216:9216"
+    depends_on:
+      - configdb-replica2
+
+  mongo-exporter-shard0:
+    image: percona/mongodb_exporter:0.41.0
+    container_name: mongo-exporter-shard0
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard0-replica2:27017/admin?authSource=admin&directConnection=true"
+    ports:
+      - "9217:9216"
+    depends_on:
+      - shard0-replica2
+
+  mongo-exporter-shard1:
+    image: percona/mongodb_exporter:0.41.0
+    container_name: mongo-exporter-shard1
+    restart: always
+    command:
+      - "--compatible-mode"
+      - "--collector.replicasetstatus"
+      - "--collector.dbstats"
+      - "--collector.dbstatsfreestorage"
+      - "--collector.collstats"
+      - "--collector.indexstats"
+      - "--collector.topmetrics"
+      - "--collector.currentopmetrics"
+      - "--mongodb.global-conn-pool"
+      - "--web.listen-address=:9216"
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: "mongodb://${MONGO_MONITOR_USER}:${MONGO_MONITOR_PASSWORD}@shard1-replica2:27017/admin?authSource=admin&directConnection=true"
+    ports:
+      - "9218:9216"
+    depends_on:
+      - shard1-replica2
+
+  ######## HAPROXY — Load balancer for mongos routers ########
+
+  haproxy:
+    image: haproxy:latest
+    container_name: haproxy
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "27017:27017"
+      - "8404:8404"
+    restart: always
+    env_file:
+      - .env
+
+  ######## GRAFANA ########
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    restart: always
+
+  ######## NODE EXPORTER ########
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    restart: always
+
+volumes:
+  init-state:
+  configdb-replica2-data:
+  shard0-replica2-data:
+  shard1-replica2-data:
+  grafana_data:
