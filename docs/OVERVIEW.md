@@ -654,34 +654,112 @@ docker compose down
 
 ## 🌐 Multi-Host Deployment
 
-สำหรับ production หรือ testing แบบกระจายศูนย์อย่างแท้จริง โปรเจกต์นี้มีไฟล์สำหรับรันบน **3 เครื่องแยกกัน**:
+สำหรับ production หรือ testing แบบกระจายศูนย์อย่างแท้จริง โปรเจกต์นี้มีไฟล์สำหรับรันบน **3 เครื่องแยกกัน** โดยแต่ละเครื่องมีหน้าที่ชัดเจน:
 
 ```
-┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
-│   Host 1 (10.0.0.1)  │  │   Host 2 (10.0.0.2)  │  │   Host 3 (10.0.0.3)  │
-│                      │  │                      │  │                      │
-│ configdb-replica0    │  │ configdb-replica1    │  │ configdb-replica2    │
-│ shard0-replica0      │  │ shard0-replica1      │  │ shard0-replica2      │
-│ shard1-replica1      │  │ shard1-replica0      │  │ shard1-replica2      │
-│ mongos-router0:27017 │  │ mongos-router1:27018 │  │ HAProxy → :27017     │
-│ Prometheus :9090     │  │                      │  │ Grafana :3000        │
-│ Backup Service       │  │                      │  │                      │
-└──────────────────────┘  └──────────────────────┘  └──────────────────────┘
+                     ┌─────────────────────────────────┐
+                     │         Client / Application      │
+                     └───────────────┬───────────────────┘
+                                     │
+                      ┌──────────────┴──────────────┐
+                      │  HAProxy (Host 3 :27017)     │  ← Load Balancer
+                      │  กระจายคำขอไป mongos ทั้ง 2 ตัว  │
+                      └──────────────┬──────────────┘
+                                     │
+              ┌──────────────────────┼──────────────────────┐
+              │                      │                      │
+    ┌─────────┴─────────┐  ┌─────────┴─────────┐  ┌─────────┴─────────┐
+    │  Host 1 (10.0.0.1) │  │  Host 2 (10.0.0.2) │  │  Host 3 (10.0.0.3) │
+    │                    │  │                    │  │                    │
+    │ 🗄️ configdb-0     │  │ 🗄️ configdb-1     │  │ 🗄️ configdb-2     │
+    │ 🗂️ shard0-0       │  │ 🗂️ shard0-rep1    │  │ 🗂️ shard0-rep2    │
+    │ 🗂️ shard1-rep1    │  │ 🗂️ shard1-0       │  │ 🗂️ shard1-rep2    │
+    │ 🚦 mongos-0 :27017 │  │ 🚦 mongos-1 :27018 │  │ ⚖️ HAProxy :27017 │
+    │ 📊 Prometheus :9090│  │ 📡 exporter ×3     │  │ 📈 Grafana :3000  │
+    │ 💾 Backup Service  │  │                    │  │ 📡 exporter ×3    │
+    │ 📡 exporter ×3     │  │                    │  │                    │
+    └────────────────────┘  └────────────────────┘  └────────────────────┘
 ```
 
-**ข้อดีของ Multi-Host:**
-- แต่ละ replica อยู่คนละเครื่อง — ถ้าเครื่องนึงพัง อีก 2 เครื่องยังทำงานได้
-- แต่ละ shard กระจายข้ามเครื่อง — ข้อมูลไม่มีทางหายถ้าเสียแค่ 1 เครื่อง
-- แยก load ระหว่างเครื่อง — ไม่แย่ง RAM/CPU กัน
+### 🧠 หลักการกระจายตัว
 
-**วิธีใช้งาน:**
-1. Clone repo ไปทั้ง 3 เครื่อง
-2. แก้ไข `.env` ตั้ง IP ของแต่ละเครื่อง
-3. รัน `scripts/generate-keyfile.sh` เพื่อสร้าง keyfile และ sync ไปทุกเครื่อง
-4. เริ่ม containers: `docker compose -f docker-compose.host<N>.yml up -d`
-5. รัน `scripts/init-cluster.sh` เพื่อตั้งค่าคลัสเตอร์อัตโนมัติ
+**เปรียบเหมือนร้านอาหาร 3 สาขา ที่แชร์เมนูเดียวกัน:**
 
-อ่านเพิ่มเติมที่ [README.md](../README.md)
+| อุปมา | ความหมายใน MongoDB |
+|-------|-------------------|
+| แต่ละสาขามีครัวแยก | แต่ละ host มี mongod process ของตัวเอง |
+| ถ้าสาขานึงไฟดับ อีก 2 สาขายังเปิดได้ | ถ้า host นึงตาย replica บน host อื่นยังทำงาน |
+| ลูกค้าเดินมาสาขาไหนก็สั่งอาหารได้ | Client ต่อไปยัง HAProxy — มันจะพาไป mongos ที่ว่าง |
+| ทุกสาขามีเมนูชุดเดียวกัน | ทุก replica ใน replica set มีข้อมูลเหมือนกัน |
+
+### 🔌 การสื่อสารระหว่าง Host
+
+แต่ละ host คุยกันผ่าน **IP จริง** (ไม่ใช้ Docker DNS):
+
+```
+Host1 → Host2: 10.0.0.2:27017  (configdb-replica1)
+Host2 → Host3: 10.0.0.3:27017  (configdb-replica2)
+Mongos → configdb: configdb/10.0.0.1:27017,10.0.0.2:27017,10.0.0.3:27017
+Prometheus → Host2: 10.0.0.2:9216, 10.0.0.2:9217, 10.0.0.2:9218
+```
+
+> 💡 เพราะอยู่คนละเครื่อง IP ไม่ชนกัน — ทุก mongod ใช้ port `27017` เหมือนกันได้เลย!
+
+### 📁 ไฟล์ Compose แยกตาม Host
+
+| ไฟล์ | ใช้บน | มีอะไรบ้าง |
+|------|-------|-----------|
+| `docker-compose.host1.yml` | Host 1 | configdb-0 + shard0-0 + shard1-rep1 + mongos-0 + Prometheus + Backup + 3 exporters |
+| `docker-compose.host2.yml` | Host 2 | configdb-1 + shard0-rep1 + shard1-0 + mongos-1 + 3 exporters |
+| `docker-compose.host3.yml` | Host 3 | configdb-2 + shard0-rep2 + shard1-rep2 + HAProxy + Grafana + 3 exporters |
+
+### 🚀 วิธี Deploy (แบบกระจายศูนย์)
+
+```bash
+# ──── ขั้นที่ 1: Clone repo ไปทั้ง 3 เครื่อง ────
+ssh root@10.0.0.1 'git clone https://github.com/Wsangsrichan/mongodb-cluster-shard-docker.git /opt/mongodb-cluster-shard-docker'
+ssh root@10.0.0.2 'git clone https://github.com/Wsangsrichan/mongodb-cluster-shard-docker.git /opt/mongodb-cluster-shard-docker'
+ssh root@10.0.0.3 'git clone https://github.com/Wsangsrichan/mongodb-cluster-shard-docker.git /opt/mongodb-cluster-shard-docker'
+
+# ──── ขั้นที่ 2: ตั้งค่า .env (แก้ IP + password) ────
+# แก้ไข /opt/mongodb-cluster-shard-docker/.env บนทุกเครื่อง
+# หรือแก้เครื่องเดียวแล้ว SCP ไปอีก 2 เครื่อง
+
+# ──── ขั้นที่ 3: สร้าง keyfile และ sync ────
+# รันจาก Host 1
+cd /opt/mongodb-cluster-shard-docker
+bash scripts/generate-keyfile.sh
+# → ไฟล์ keyfile จะถูก copy ไป Host 2 และ Host 3 อัตโนมัติ
+
+# ──── ขั้นที่ 4: Start containers ────
+ssh root@10.0.0.1 'cd /opt/mongodb-cluster-shard-docker && docker compose -f docker-compose.host1.yml up -d --build'
+ssh root@10.0.0.2 'cd /opt/mongodb-cluster-shard-docker && docker compose -f docker-compose.host2.yml up -d --build'
+ssh root@10.0.0.3 'cd /opt/mongodb-cluster-shard-docker && docker compose -f docker-compose.host3.yml up -d --build'
+
+# ──── ขั้นที่ 5: Init คลัสเตอร์ ────
+bash scripts/init-cluster.sh
+# → รอ ~30-60 วินาที — script จะ init replica sets + สร้าง users + add shards ให้เอง
+
+# ──── ขั้นที่ 6: ทดสอบ ────
+mongosh "mongodb://admin:YOUR_PASSWORD@10.0.0.3:27017/admin"
+sh.status()
+```
+
+### ✅ ข้อดีของ Multi-Host
+
+- 🛡️ **High Availability:** replica แต่ละตัวอยู่คนละเครื่อง — host นึงพัง cluster ยังรันต่อ
+- 📊 **Load Distribution:** mongod ไม่แย่ง RAM/CPU กัน — แต่ละเครื่องรับผิดชอบแค่ 3 mongod
+- 🔄 **Rolling Upgrade:** อัปเดตทีละ host ได้ — cluster ไม่ down time
+- 🌍 **Geographic Redundancy:** ถ้า 3 host อยู่คนละ DC — รอดแม้ Data Center ไฟดับ
+
+### ⚠️ ข้อควรระวัง
+
+- **Network latency:** ต้องให้แน่ใจว่า latency ระหว่าง host < 10ms (ไม่งั้น replica sync จะช้า)
+- **Keyfile ต้อง sync:** ก่อน start containers — keyfile ต้องมีและเหมือนกันทั้ง 3 host
+- **Time sync:** NTP ต้องตรงกันทั้ง 3 host (MongoDB ใช้ timestamp ภายใน)
+- **Firewall:** เปิด ports 27017, 9216-9218, 9090, 9100, 3000 ระหว่าง host
+
+อ่านขั้นตอนเต็มที่ [README.md](../README.md)
 
 ---
 
