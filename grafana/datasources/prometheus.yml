@@ -1,0 +1,16 @@
+# =============================================================================
+# Grafana Datasource Provisioning — Prometheus
+# =============================================================================
+# Auto-configures Prometheus as a datasource on Grafana startup.
+# Prometheus runs on Host 1. Grafana runs on Host 3.
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://${HOST1_IP}:9090
+    isDefault: true
+    editable: true

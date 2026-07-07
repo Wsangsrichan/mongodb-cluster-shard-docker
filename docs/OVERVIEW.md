@@ -7,6 +7,8 @@
 
 เอกสารนี้ถูกเขียนขึ้นสำหรับคนที่ **ไม่เคยรู้จัก MongoDB clustering มาก่อนเลย** เราจะค่อย ๆ อธิบายตั้งแต่พื้นฐาน ไล่ขึ้นไปจนถึงการทำงานจริงของคลัสเตอร์ในโปรเจกต์นี้ ทุกหัวข้อจะใช้การเปรียบเทียบ (อุปมาอุปไมย) กับสิ่งของในชีวิตจริง เพื่อให้เข้าใจง่ายที่สุด
 
+> **🔄 Multi-Host Deployment:** โปรเจกต์นี้รองรับทั้งแบบ single-host (`docker-compose.yml`) และ multi-host (3 เครื่องแยกกัน ใช้ `docker-compose.host1.yml`, `host2.yml`, `host3.yml`) สำหรับ production หรือ testing แบบกระจายศูนย์อย่างแท้จริง อ่านเพิ่มเติมที่ [Multi-Host Deployment](#multi-host-deployment)
+
 ---
 
 ## 🏠 MongoDB คืออะไร
@@ -647,6 +649,39 @@ docker compose down
 └── grafana/
     └── dashboard-14997.json   # MongoDB monitoring dashboard
 ```
+
+---
+
+## 🌐 Multi-Host Deployment
+
+สำหรับ production หรือ testing แบบกระจายศูนย์อย่างแท้จริง โปรเจกต์นี้มีไฟล์สำหรับรันบน **3 เครื่องแยกกัน**:
+
+```
+┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+│   Host 1 (10.0.0.1)  │  │   Host 2 (10.0.0.2)  │  │   Host 3 (10.0.0.3)  │
+│                      │  │                      │  │                      │
+│ configdb-replica0    │  │ configdb-replica1    │  │ configdb-replica2    │
+│ shard0-replica0      │  │ shard0-replica1      │  │ shard0-replica2      │
+│ shard1-replica1      │  │ shard1-replica0      │  │ shard1-replica2      │
+│ mongos-router0:27017 │  │ mongos-router1:27018 │  │ HAProxy → :27017     │
+│ Prometheus :9090     │  │                      │  │ Grafana :3000        │
+│ Backup Service       │  │                      │  │                      │
+└──────────────────────┘  └──────────────────────┘  └──────────────────────┘
+```
+
+**ข้อดีของ Multi-Host:**
+- แต่ละ replica อยู่คนละเครื่อง — ถ้าเครื่องนึงพัง อีก 2 เครื่องยังทำงานได้
+- แต่ละ shard กระจายข้ามเครื่อง — ข้อมูลไม่มีทางหายถ้าเสียแค่ 1 เครื่อง
+- แยก load ระหว่างเครื่อง — ไม่แย่ง RAM/CPU กัน
+
+**วิธีใช้งาน:**
+1. Clone repo ไปทั้ง 3 เครื่อง
+2. แก้ไข `.env` ตั้ง IP ของแต่ละเครื่อง
+3. รัน `scripts/generate-keyfile.sh` เพื่อสร้าง keyfile และ sync ไปทุกเครื่อง
+4. เริ่ม containers: `docker compose -f docker-compose.host<N>.yml up -d`
+5. รัน `scripts/init-cluster.sh` เพื่อตั้งค่าคลัสเตอร์อัตโนมัติ
+
+อ่านเพิ่มเติมที่ [README.md](../README.md)
 
 ---
 

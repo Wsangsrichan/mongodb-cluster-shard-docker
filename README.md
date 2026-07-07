@@ -1,267 +1,144 @@
-# 🍃 MongoDB Sharded Cluster with Docker Compose
+# 🍃 MongoDB Sharded Cluster — Multi-Host Docker Deployment
 
-A production-like MongoDB sharded cluster running entirely in Docker Compose, complete with monitoring (Prometheus + Grafana) and automated daily backups using `mongodump`.
+A production-like MongoDB sharded cluster distributed across **3 physical/virtual hosts** using Docker Compose, complete with monitoring (Prometheus + Grafana), HAProxy load balancing, and automated daily backups.
 
 ## 🏗 Architecture
 
 ```
-                         ┌──────────────────────────────────┐
-                         │         Client / mongosh          │
-                         └──────────────┬───────────────────┘
-                                        │
-                          ┌─────────────┴─────────────┐
-                          │    mongos-router0 (:27017) │
-                          │    mongos-router1 (:27018) │
-                          └─────────────┬─────────────┘
-                                        │
-              ┌─────────────────────────┼─────────────────────────┐
-              │                         │                         │
-    ┌─────────┴─────────┐     ┌────────┴────────┐     ┌──────────┴──────────┐
-    │   Config Replica  │     │   Shard 0 RS    │     │    Shard 1 RS       │
-    │     (configdb)     │     │                 │     │                     │
-    │  ┌──────────────┐ │     │ ┌─────────────┐ │     │ ┌─────────────────┐ │
-    │  │ replica0     │ │     │ │ replica0     │ │     │ │ replica0         │ │
-    │  │ replica1     │ │     │ │ replica1     │ │     │ │ replica1         │ │
-    │  │ replica2     │ │     │ │ replica2     │ │     │ │ replica2         │ │
-    │  └──────────────┘ │     │ └─────────────┘ │     │ └─────────────────┘ │
-    └───────────────────┘     └─────────────────┘     └─────────────────────┘
-
-  ┌──────────────┐  ┌────────────────┐  ┌─────────────────┐  ┌───────────────┐
-  │  Prometheus  │  │    Grafana     │  │  Node Exporter  │  │   MongoDB     │
-  │   (:9090)    │  │    (:3000)     │  │    (:9100)      │  │   Backup Svc  │
-  └──────┬───────┘  └────────────────┘  └─────────────────┘  └───────────────┘
-         │
-    ┌────┴────────────────────────────────────┐
-    │ 11× MongoDB Exporters (percona) :9216   │
-    │  (one per mongod/mongos instance)       │
-    └─────────────────────────────────────────┘
+                        ┌──────────────────────────────┐
+                        │       Client / mongosh        │
+                        └──────────────┬───────────────┘
+                                       │
+                         ┌─────────────┴─────────────┐
+                         │  HAProxy (Host 3 :27017)  │
+                         └─────────────┬─────────────┘
+                                       │
+                    ┌──────────────────┼──────────────────┐
+                    │                  │                  │
+          ┌─────────┴─────────┐ ┌──────┴──────┐ ┌────────┴────────┐
+          │  Host 1 (10.0.0.1) │ │ Host 2      │ │  Host 3         │
+          │                    │ │ (10.0.0.2)  │ │  (10.0.0.3)    │
+          │ configdb-replica0  │ │ configdb-r1 │ │ configdb-r2     │
+          │ shard0-replica0    │ │ shard0-r1   │ │ shard0-r2       │
+          │ shard1-replica1    │ │ shard1-r0   │ │ shard1-r2       │
+          │ mongos-router0     │ │ mongos-r1   │ │                 │
+          │ Prometheus :9090   │ │              │ │ HAProxy :27017  │
+          │ Backup Service     │ │              │ │ Grafana :3000   │
+          └────────────────────┘ └──────────────┘ └─────────────────┘
 ```
 
-**Components:**
-
-- **3 Config Servers** (`configdb-replica0/1/2`) — store cluster metadata
-- **2 Shards** with 3 replicas each (`shard0-replica0/1/2`, `shard1-replica0/1/2`) — store actual data
-- **2 Mongos Routers** (`mongos-router0:27017`, `mongos-router1:27018`) — query routing
-- **Coordinator** — one-time init: generates keyfile, waits for nodes, creates users
-- **Prometheus** (`:9090`) — metrics collection from MongoDB exporters
-- **Grafana** (`:3000`) — dashboards and visualization
-- **Backup Service** — automated daily `mongodump` with configurable retention
+**Key design decisions:**
+- Each host runs its own `docker-compose.host<N>.yml` on the default bridge network
+- All mongod nodes use internal port 27017 (no conflicts — separate hosts)
+- Cross-host communication via `${HOST_IP}:PORT`
+- Internal auth keyfile synced across hosts via `scripts/generate-keyfile.sh`
+- MongoDB exporters: 3 per host, mapped to host ports 9216/9217/9218
+- HAProxy on Host 3 load balances between Host 1 and Host 2 mongos routers
 
 ## 📋 Prerequisites
 
-- **Docker** 20.10+ and **Docker Compose** v2+
-- At least **4–5 GB RAM** available for Docker
-- **Linux** (tested on Ubuntu 24.04)
-- ~2–5 GB free disk space for data volumes
+- **3 Linux hosts** (Ubuntu 24.04+ recommended) with static IPs
+- **Docker** 20.10+ and **Docker Compose** v2+ on each host
+- **SSH key access** from your deployment machine to all 3 hosts (root)
+- At least **4 GB RAM** per host (8 GB recommended for Host 1)
+- **Network:** All 3 hosts must be able to reach each other on ports 27017, 9216-9218, 9090, 9100
 
 ## 🚀 Quick Start
 
-Follow these steps carefully to get the cluster running. **Steps 4–8 must be run manually** due to MongoDB's localhost exception — the coordinator cannot run `rs.initiate()` from a separate container when `authorization: enabled` is set.
-
-### 1. Clone and configure
+### 1. Clone the repo on all 3 hosts
 
 ```bash
-git clone https://github.com/Wsangsrichan/mongodb-cluster-shard-docker.git
-cd mongodb-cluster-shard-docker
+# On each host:
+git clone https://github.com/Wsangsrichan/mongodb-cluster-shard-docker.git /opt/mongodb-cluster-shard-docker
+cd /opt/mongodb-cluster-shard-docker
+```
+
+### 2. Configure environment
+
+Copy and edit `.env` on each host (or deploy a single `.env` to all 3):
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` to set strong passwords:
+Edit `.env` with your host IPs and strong passwords:
 
 ```env
+HOST1_IP=10.0.0.1
+HOST2_IP=10.0.0.2
+HOST3_IP=10.0.0.3
 MONGO_INITDB_ROOT_USERNAME=admin
-MONGO_INITDB_ROOT_PASSWORD=your_strong_password_here
+MONGO_INITDB_ROOT_PASSWORD=your_strong_password
 MONGO_MONITOR_USER=monitor
-MONGO_MONITOR_PASSWORD=your_monitor_password_here
+MONGO_MONITOR_PASSWORD=your_monitor_password
 ```
 
-### 2. Start all containers
+### 3. Generate and distribute the keyfile
+
+Run from your deployment machine (or Host 1):
 
 ```bash
-docker compose up -d --build
+./scripts/generate-keyfile.sh
 ```
 
-This starts all 9 `mongod` nodes, 2 `mongos` routers, the coordinator (which generates the keyfile and waits for nodes), plus Prometheus and Grafana.
+This generates `keyfile` and copies it to Host 2 and Host 3 via SCP.
 
-### 3. Wait for all nodes to be ready
+### 4. Start containers on each host
 
 ```bash
-sleep 30
+# Host 1:
+docker compose -f docker-compose.host1.yml up -d --build
+
+# Host 2:
+docker compose -f docker-compose.host2.yml up -d --build
+
+# Host 3:
+docker compose -f docker-compose.host3.yml up -d --build
 ```
 
-You can verify nodes are listening with:
+### 5. Initialize the cluster
+
+Run from your deployment machine (requires SSH access to all 3 hosts):
 
 ```bash
-docker compose ps
+./scripts/init-cluster.sh
 ```
 
-### 4. Initialize replica sets
+This script will:
+1. Wait for all 9 mongod nodes to be ready
+2. Initiate replica sets (`configdb`, `shard0`, `shard1`) via SSH + docker exec
+3. Create admin users on each replica set primary
+4. Create monitor user for Prometheus
+5. Add shards to the cluster via mongos
+6. Verify cluster status
 
-> ⚠️ **Important:** These commands **must** be run via `docker exec` (not from the coordinator container) because MongoDB's localhost exception only allows `rs.initiate()` from localhost when `authorization: enabled` is set.
-
-**Config server replica set:**
+### 6. Verify the cluster
 
 ```bash
-docker exec mongodb-cluster-shard-docker-configdb-replica0-1 mongosh --quiet --eval '
-rs.initiate({
-  _id: "configdb",
-  configsvr: true,
-  members: [
-    { _id: 0, host: "configdb-replica0:27017" },
-    { _id: 1, host: "configdb-replica1:27017" },
-    { _id: 2, host: "configdb-replica2:27017" }
-  ]
-})'
+# Connect via HAProxy (Host 3):
+mongosh "mongodb://admin:YOUR_PASSWORD@10.0.0.3:27017/admin"
+
+# Or directly to a mongos router:
+mongosh "mongodb://admin:YOUR_PASSWORD@10.0.0.1:27017/admin"
 ```
 
-**Shard 0 replica set:**
-
-```bash
-docker exec mongodb-cluster-shard-docker-shard0-replica0-1 mongosh --quiet --eval '
-rs.initiate({
-  _id: "shard0",
-  members: [
-    { _id: 0, host: "shard0-replica0:27017" },
-    { _id: 1, host: "shard0-replica1:27017" },
-    { _id: 2, host: "shard0-replica2:27017" }
-  ]
-})'
-```
-
-**Shard 1 replica set:**
-
-```bash
-docker exec mongodb-cluster-shard-docker-shard1-replica0-1 mongosh --quiet --eval '
-rs.initiate({
-  _id: "shard1",
-  members: [
-    { _id: 0, host: "shard1-replica0:27017" },
-    { _id: 1, host: "shard1-replica1:27017" },
-    { _id: 2, host: "shard1-replica2:27017" }
-  ]
-})'
-```
-
-### 5. Wait for primary elections
-
-```bash
-sleep 15
-```
-
-Each replica set needs time to hold an election and select a primary. You can check with:
-
-```bash
-docker exec mongodb-cluster-shard-docker-configdb-replica0-1 mongosh --quiet --eval "rs.status().members.map(m => ({name: m.name, stateStr: m.stateStr}))"
-```
-
-### 6. Create admin users on each replica set
-
-Since `authorization: enabled` is active, you must create users **before** the mongos routers can connect with authentication.
-
-```bash
-# Config server
-docker exec mongodb-cluster-shard-docker-configdb-replica0-1 mongosh --quiet --eval "
-db.getSiblingDB('admin').createUser({
-  user: 'admin',
-  pwd: 'YOUR_PASSWORD',
-  roles: [
-    { role: 'root', db: 'admin' },
-    { role: 'clusterAdmin', db: 'admin' }
-  ]
-})"
-
-# Shard 0
-docker exec mongodb-cluster-shard-docker-shard0-replica0-1 mongosh --quiet --eval "
-db.getSiblingDB('admin').createUser({
-  user: 'admin',
-  pwd: 'YOUR_PASSWORD',
-  roles: [{ role: 'root', db: 'admin' }]
-})"
-
-# Shard 1
-docker exec mongodb-cluster-shard-docker-shard1-replica0-1 mongosh --quiet --eval "
-db.getSiblingDB('admin').createUser({
-  user: 'admin',
-  pwd: 'YOUR_PASSWORD',
-  roles: [{ role: 'root', db: 'admin' }]
-})"
-```
-
-> Replace `YOUR_PASSWORD` with the value you set for `MONGO_INITDB_ROOT_PASSWORD` in `.env`.
-
-### 7. Create monitor user (for Prometheus exporters)
-
-```bash
-docker exec mongodb-cluster-shard-docker-configdb-replica0-1 mongosh --quiet \
-  -u admin -p YOUR_PASSWORD --authenticationDatabase admin --eval "
-db.getSiblingDB('admin').createUser({
-  user: 'monitor',
-  pwd: 'YOUR_MONITOR_PASSWORD',
-  roles: [
-    { role: 'clusterMonitor', db: 'admin' },
-    { role: 'read', db: 'local' }
-  ]
-})"
-```
-
-> Replace `YOUR_MONITOR_PASSWORD` with the value from `MONGO_MONITOR_PASSWORD` in `.env`.
-
-### 8. Add shards to the cluster
-
-Now that users exist, the mongos routers can authenticate:
-
-```bash
-docker exec mongodb-cluster-shard-docker-mongos-router0-1 mongosh --quiet \
-  -u admin -p YOUR_PASSWORD --authenticationDatabase admin --eval "
-sh.addShard('shard0/shard0-replica0:27017,shard0-replica1:27017,shard0-replica2:27017')"
-
-docker exec mongodb-cluster-shard-docker-mongos-router0-1 mongosh --quiet \
-  -u admin -p YOUR_PASSWORD --authenticationDatabase admin --eval "
-sh.addShard('shard1/shard1-replica0:27017,shard1-replica1:27017,shard1-replica2:27017')"
-```
-
-### 9. Verify the cluster
-
-```bash
-docker exec mongodb-cluster-shard-docker-mongos-router0-1 mongosh --quiet \
-  -u admin -p YOUR_PASSWORD --authenticationDatabase admin --eval "sh.status()"
-```
-
-You should see both shards listed with `state: 1` (active).
+Run `sh.status()` to see both shards active.
 
 ## 🔌 Access Points
 
-| Service | Address | Description |
-|---|---|---|
-| **Mongos Router 0** | `localhost:27017` | Primary query router |
-| **Mongos Router 1** | `localhost:27018` | Secondary query router |
-| **Grafana** | `http://localhost:3000` | Monitoring dashboards |
-| **Prometheus** | `http://localhost:9090` | Metrics and alerting |
-
-## 💻 Connecting with mongosh
-
-From your host machine (requires `mongosh` installed):
-
-```bash
-mongosh "mongodb://admin:YOUR_PASSWORD@localhost:27017/admin"
-```
-
-Or directly inside a container:
-
-```bash
-docker exec -it mongodb-cluster-shard-docker-mongos-router0-1 mongosh \
-  -u admin -p YOUR_PASSWORD --authenticationDatabase admin
-```
-
-If you don't have `mongosh` installed locally, use `docker exec` as shown above.
+| Service | Address | Host |
+|---------|---------|------|
+| **Mongos Router 0** | `10.0.0.1:27017` | Host 1 |
+| **Mongos Router 1** | `10.0.0.2:27018` | Host 2 |
+| **HAProxy (Load Balanced)** | `10.0.0.3:27017` | Host 3 |
+| **Prometheus** | `http://10.0.0.1:9090` | Host 1 |
+| **Grafana** | `http://10.0.0.3:3000` | Host 3 |
+| **HAProxy Stats** | `http://10.0.0.3:8404` | Host 3 |
 
 ## 🧪 Test Sharding
 
-To verify sharding is working correctly, enable sharding on a test database, create a sharded collection, and insert some data:
-
 ```bash
-docker exec mongodb-cluster-shard-docker-mongos-router0-1 mongosh --quiet \
-  -u admin -p YOUR_PASSWORD --authenticationDatabase admin --eval "
+mongosh "mongodb://admin:YOUR_PASSWORD@10.0.0.3:27017/admin" --eval "
 sh.enableSharding('testdb');
 sh.shardCollection('testdb.testcoll', { _id: 'hashed' });
 for (let i = 0; i < 1000; i++) {
@@ -271,112 +148,74 @@ db.getSiblingDB('testdb').testcoll.getShardDistribution()
 "
 ```
 
-The output of `getShardDistribution()` should show data distributed across both shards.
-
 ## 📊 Monitoring
 
-### Grafana Dashboard
+### Prometheus (Host 1)
+Open `http://10.0.0.1:9090` to explore metrics. All 9 MongoDB exporters + 3 node exporters should appear UP under **Status → Targets**.
 
-1. Open Grafana at http://localhost:3000
-   - Default credentials: `admin` / `admin`
-2. Add a Prometheus data source:
-   - Go to **Connections → Data Sources → Add data source → Prometheus**
-   - Set URL to `http://prometheus:9090`
-   - Name it `Prometheus` (required for the dashboard JSON to work)
-   - Click **Save & Test**
-3. Import the dashboard:
-   - Go to **Dashboards → New → Import**
-   - Upload `grafana/dashboard-14997.json` or paste its contents
-   - Select the `Prometheus` data source
-   - Click **Import**
-
-The dashboard (ID 14997) is a fork of the popular "MongoDB Prometheus Exporter Dashboard" compatible with Grafana 11+.
-
-### Prometheus
-
-Open http://localhost:9090 to explore metrics directly, run queries, and check targets status. All 11 MongoDB exporters should appear as "UP" under **Status → Targets**.
+### Grafana (Host 3)
+1. Open `http://10.0.0.3:3000` (default: `admin` / `admin`)
+2. The Prometheus datasource is pre-configured via provisioning
+3. Import dashboard: **Dashboards → New → Import → Upload** `grafana/dashboard-14997.json`
 
 ## 💾 Backup
 
-Backups run automatically as a daily job (default: 1:00 AM UTC).
+Daily backups run on Host 1 at the configured time (default: 01:00 UTC). Backups are stored in `./backups/` on Host 1.
 
-**Configuration (via `.env`):**
-
-- `BACKUP_TIME` — cron-style time (default: `01:00`)
-- `BACKUP_RETENTION_DAYS` — days to keep backups (default: `7`)
-
-**Backup locations:**
-
-- Container: `/tmp/backups/backup_YYYYMMDD_HHMMSS/`
-- Host: `./backups/backup_YYYYMMDD_HHMMSS/` (mounted volume)
-
-To run a manual backup immediately:
-
+Manual backup:
 ```bash
-docker exec mongodb-cluster-shard-docker-backup-1 mongodump \
-  --uri="mongodb://admin:YOUR_PASSWORD@mongos-router0:27017/admin?authSource=admin" \
-  --out="/tmp/backups/manual_$(date +%Y%m%d_%H%M%S)" --gzip
-```
-
-## 🧹 Cleanup
-
-Stop and remove everything **including data volumes**:
-
-```bash
-docker compose down -v
-```
-
-Stop without removing data (safe to restart later):
-
-```bash
-docker compose down
+ssh root@10.0.0.1 "docker exec mongodb-backup mongodump \
+  --uri='mongodb://admin:YOUR_PASS@localhost:27017/admin?authSource=admin' \
+  --out='/tmp/backups/manual_$(date +%Y%m%d_%H%M%S)' --gzip"
 ```
 
 ## 📁 File Structure
 
 ```
-├── docker-compose.yml         # Full cluster definition
-├── .env.example               # Template for environment variables
-├── .gitignore                 # Ignore .env and data dirs
-├── prometheus.yml             # Prometheus scrape config
-├── README.md                  # This file
+├── docker-compose.host1.yml    # Host 1 services
+├── docker-compose.host2.yml    # Host 2 services
+├── docker-compose.host3.yml    # Host 3 services
+├── docker-compose.yml           # Original single-host (deprecated)
+├── .env.example                 # Template with host IPs
+├── .gitignore
+├── prometheus.yml               # Prometheus scrape config (multi-host)
+├── haproxy/
+│   └── haproxy.cfg              # TCP load balancer for mongos
+├── scripts/
+│   ├── generate-keyfile.sh      # Keyfile generation + distribution
+│   └── init-cluster.sh          # Full cluster initialization
 ├── mongod/
-│   ├── Dockerfile             # Builds MongoDB mongod image (shard/config server)
-│   ├── mongod.conf            # Mongod configuration (auth, replication)
-│   └── entrypoint.sh          # Entrypoint script for mongod containers
+│   ├── Dockerfile
+│   ├── mongod.conf
+│   └── entrypoint.sh
 ├── mongos/
-│   ├── Dockerfile             # Builds MongoDB mongos router image
-│   └── mongos.conf            # Mongos configuration (net only)
-├── coordinator/
-│   ├── Dockerfile             # Builds init container image
-│   └── init.sh                # Generates keyfile, waits for nodes, creates users
+│   ├── Dockerfile
+│   └── mongos.conf
 ├── backup/
-│   └── entrypoint.sh          # Automated daily backup with retention
-└── grafana/
-    └── dashboard-14997.json   # MongoDB monitoring dashboard (Grafana v2 API)
+│   └── entrypoint.sh            # Automated daily backup
+├── grafana/
+│   ├── dashboard-14997.json     # MongoDB monitoring dashboard
+│   └── datasources/
+│       └── prometheus.yml       # Auto-provisioned datasource
+└── coordinator/                 # Legacy single-host init (deprecated)
 ```
 
-## 📈 Resource Usage
+## 🧹 Cleanup
 
-This cluster runs **15 MongoDB-related containers** (9 mongod + 2 mongos + 11 exporters + coordinator + backup + monitoring), which requires significant resources:
+On each host:
+```bash
+cd /opt/mongodb-cluster-shard-docker
+docker compose -f docker-compose.host1.yml down -v   # Include -v to wipe data
+docker compose -f docker-compose.host2.yml down -v
+docker compose -f docker-compose.host3.yml down -v
+```
 
-- **RAM:** ~4–5 GB minimum, 8 GB recommended
-- **Disk:** ~2–5 GB for data volumes (grows with usage)
-- **CPU:** Multi-core recommended
+## ⚠️ Notes
 
-To reduce resource usage, you can comment out unused exporters or shards in `docker-compose.yml`.
-
-## ⚠️ Notes & Known Issues
-
-- **Manual `rs.initiate()` required:** The coordinator script generates the keyfile and waits for nodes, but it **cannot** execute `rs.initiate()` from a separate container when `authorization: enabled` is set. This is due to MongoDB's [localhost exception](https://www.mongodb.com/docs/manual/core/localhost-exception/) — only `docker exec` (which runs as localhost) can perform the initial replica set initiation. Steps 4–8 of the Quick Start above must be done manually.
-
-- **No TLS:** This configuration is intended for local development only. TLS is disabled for simplicity.
-
-- **Keyfile:** The cluster uses an internally generated keyfile (`/init-state/keyfile`) for intra-cluster authentication. The coordinator generates this on first startup.
-
-- **Networking:** All services communicate over the Docker `internalnetwork`. Host ports are exposed only for mongos routers, Grafana, and Prometheus.
-
-- **Coordinator idempotency:** The coordinator script can be re-run safely; it skips steps that are already complete. It marks completion with `/init-state/.init-done`.
+- **Manual `rs.initiate()` required:** Due to MongoDB's localhost exception with `authorization: enabled`, `rs.initiate()` must run via `docker exec`. The `init-cluster.sh` script automates this via SSH.
+- **No TLS:** This configuration is for development/internal networks. TLS is disabled.
+- **Keyfile sync:** The keyfile must exist and be identical on all 3 hosts before starting containers.
+- **Single-host fallback:** The original `docker-compose.yml` is kept for single-host development.
 
 ## 📄 License
 
